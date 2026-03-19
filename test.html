@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pesticides par commune</title>
+  <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" rel="stylesheet">
+  <script src="https://unpkg.com/pmtiles@3.0.6/dist/pmtiles.js"></script>
+  <style>
+    body { margin: 0; padding: 0; }
+    #map { width: 100%; height: 100vh; }
+    #bandeau-haut { position:absolute; top:0; left:0; right:0; z-index:1000; background:white; padding:10px 20px; text-align:center; box-shadow:0 2px 6px rgba(0,0,0,0.15); }
+    #bandeau-bas { position:absolute; bottom:0; left:0; right:0; z-index:1000; background:white; padding:6px 20px; text-align:center; font-size:11px; color:#666; }
+  </style>
+</head>
+<body>
+
+  <!-- BANDEAU TITRE -->
+  <div id="bandeau-haut">
+    <h2 style="margin:0; font-size:clamp(14px,2vw,22px); font-weight:bold; color:#333;">
+      Pesticides dans votre commune : certaines activités agricoles exposent plus
+    </h2>
+    <p style="margin:5px 0 0 0; font-size:clamp(10px,1.2vw,16px); color:#666;">
+      Par commune, exposition aux pesticides les plus dangereux entre 2013 et 2022 et activité agricole majoritaire
+    </p>
+  </div>
+
+  <!-- CARTE -->
+  <div id="map"></div>
+
+  <!-- BANDEAU SOURCES -->
+  <div id="bandeau-bas">
+    <strong>Sources :</strong> S. Rigal, T. Perrot, Pesticides en France : dix ans d'exposition aux substances actives (2025) ; Solagro (Carte Adonis); Agreste (RA 2020). <strong>© Lisa Boudoussier / Reporterre</strong>
+  </div>
+
+  <script>
+    // Connecter PMTiles à MapLibre
+    const protocol = new pmtiles.Protocol();
+    maplibregl.addProtocol("pmtiles", protocol.tile);
+
+    // Initialiser la carte
+    const map = new maplibregl.Map({
+      container: "map",
+      style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+      center: [2.5, 46.5],  // centre France
+      zoom: 5
+    });
+
+    map.on("load", function() {
+
+      // COUCHE 1 : TYPES DE CULTURES (agreste)
+      map.addSource("agreste", {
+        type: "vector",
+        url: "pmtiles://https://lisaboudoussier-8.github.io/carteReporterre/agreste.pmtiles"
+      });
+
+      map.addLayer({
+        id: "cultures",
+        type: "fill",
+        source: "agreste",
+        "source-layer": "agreste",
+        paint: {
+          "fill-color": [
+            "match", ["get", "Legende"],
+            "Grandes cultures", "#ffed2a",
+            "Elevage", "#87591c",
+            "Polyculture et/ou  polyélevage", "#20871c",
+            "Viticulture", "#a40001",
+            "Fruits ou autres cultures permanentes", "#f29111",
+            "Fleurs et/ou horticulture diverse", "#76b9d1",
+            "Légumes ou champignons", "#9357ad",
+            "white"
+          ],
+          "fill-opacity": 1
+        }
+      });
+
+      // COUCHE 2 : EXPOSITION AUX PESTICIDES (communes)
+      map.addSource("communes", {
+        type: "vector",
+        url: "pmtiles://https://lisaboudoussier-8.github.io/carteReporterre/communes.pmtiles"
+      });
+
+      map.addLayer({
+        id: "exposition",
+        type: "fill",
+        source: "communes",
+        "source-layer": "communes_expo",
+        paint: {
+          "fill-color": "white",
+          "fill-opacity": [
+            "interpolate", ["linear"],
+            ["get", "pesticide_moy"],
+            0.02, 0.8,   // minimum -> opacité 0.8 (blanc fort)
+            1.23, 0      // maximum -> opacité 0 (couleur visible)
+          ]
+        }
+      });
+
+      // POPUP au clic
+      map.on("click", "exposition", function(e) {
+        const props = e.features[0].properties;
+        new maplibregl.Popup()
+          .setLngLat(e.lngLat)
+          .setHTML(`
+            <b>${props.nom} (${props.Departement})</b><br>
+            <b>Exposition : </b>${props.pesticide_moy}<br>
+            <b>Culture : </b>${props.Legende}<br>
+            <b>IFT max : </b>${props.cult_IFT_sup}
+          `)
+          .addTo(map);
+      });
+
+      // Curseur pointer au survol
+      map.on("mouseenter", "exposition", () => map.getCanvas().style.cursor = "pointer");
+      map.on("mouseleave", "exposition", () => map.getCanvas().style.cursor = "");
+
+    });
+  </script>
+</body>
+</html>
